@@ -509,25 +509,36 @@ func (p *ProcessCookieTest) MakeCookie(value string, ref time.Time) *http.Cookie
 }
 
 func (p *ProcessCookieTest) SaveSession(s *providers.SessionState, ref time.Time) error {
-	value, err := p.proxy.provider.CookieForSession(s, p.proxy.CookieCipher)
-	if err != nil {
-		return err
-	}
+	// value, err := p.proxy.provider.CookieForSession(s, p.proxy.CookieCipher)
+	// if err != nil {
+	// 	return err
+	// }
 	p.req.AddCookie(p.proxy.MakeSessionCookie(p.req, value, p.proxy.CookieExpire, ref))
 	return nil
 }
 
-func (p *ProcessCookieTest) LoadCookiedSession() (*providers.SessionState, time.Duration, error) {
-	return p.proxy.LoadCookiedSession(p.req)
+// func (p *ProcessCookieTest) LoadCookiedSession() (*providers.SessionState, time.Duration, error) {
+// 	return p.proxy.LoadCookiedSession(p.req)
+// }
+
+func (p *ProcessCookieTest) LoadPersistedSession() (*providers.SessionState, time.Duration, error) {
+	return p.proxy.LoadPersistedSession(p.req)
+}
+
+func (p *ProcessCookieTest) SavePersistedSession(session *providers.SessionState) {
+	p.proxy.SetPersistentSessionCookie(p.rw, p.req, session)
+	return
 }
 
 func TestLoadCookiedSession(t *testing.T) {
 	pc_test := NewProcessCookieTestWithDefaults()
 
 	startSession := &providers.SessionState{Email: "michael.bland@gsa.gov", AccessToken: "my_access_token"}
-	pc_test.SaveSession(startSession, time.Now())
 
-	session, _, err := pc_test.LoadCookiedSession()
+	pc_test.SavePersistedSession(startSession)
+	// pc_test.SaveSession(startSession, time.Now())
+
+	session, _, err := pc_test.LoadPersistedSession()
 	assert.Equal(t, nil, err)
 	assert.Equal(t, startSession.Email, session.Email)
 	assert.Equal(t, "michael.bland", session.User)
@@ -537,7 +548,7 @@ func TestLoadCookiedSession(t *testing.T) {
 func TestProcessCookieNoCookieError(t *testing.T) {
 	pc_test := NewProcessCookieTestWithDefaults()
 
-	session, _, err := pc_test.LoadCookiedSession()
+	session, _, err := pc_test.LoadPersistedSession()
 	assert.Equal(t, "Cookie \"_oauth2_proxy\" not present", err.Error())
 	if session != nil {
 		t.Errorf("expected nil session. got %#v", session)
@@ -552,7 +563,7 @@ func TestProcessCookieRefreshNotSet(t *testing.T) {
 	startSession := &providers.SessionState{Email: "michael.bland@gsa.gov", AccessToken: "my_access_token"}
 	pc_test.SaveSession(startSession, reference)
 
-	session, age, err := pc_test.LoadCookiedSession()
+	session, age, err := pc_test.LoadPersistedSession()
 	assert.Equal(t, nil, err)
 	if age < time.Duration(-2)*time.Hour {
 		t.Errorf("cookie too young %v", age)
@@ -567,7 +578,7 @@ func TestProcessCookieFailIfCookieExpired(t *testing.T) {
 	startSession := &providers.SessionState{Email: "michael.bland@gsa.gov", AccessToken: "my_access_token"}
 	pc_test.SaveSession(startSession, reference)
 
-	session, _, err := pc_test.LoadCookiedSession()
+	session, _, err := pc_test.LoadPersistedSession()
 	assert.NotEqual(t, nil, err)
 	if session != nil {
 		t.Errorf("expected nil session %#v", session)
@@ -582,7 +593,7 @@ func TestProcessCookieFailIfRefreshSetAndCookieExpired(t *testing.T) {
 	pc_test.SaveSession(startSession, reference)
 
 	pc_test.proxy.CookieRefresh = time.Hour
-	session, _, err := pc_test.LoadCookiedSession()
+	session, _, err := pc_test.LoadPersistedSession()
 	assert.NotEqual(t, nil, err)
 	if session != nil {
 		t.Errorf("expected nil session %#v", session)
@@ -798,13 +809,14 @@ func (st *SignatureTest) MakeRequestWithExpectedKey(method, body, key string) {
 
 	state := &providers.SessionState{
 		Email: "mbland@acm.org", AccessToken: "my_access_token"}
+	proxy.SaveSession()
 	value, err := proxy.provider.CookieForSession(state, proxy.CookieCipher)
 	if err != nil {
 		panic(err)
 	}
 	cookie := proxy.MakeSessionCookie(req, value, proxy.CookieExpire, time.Now())
 	req.AddCookie(cookie)
-	// This is used by the upstream to validate the signature.
+	This is used by the upstream to validate the signature.
 	st.authenticator.auth = hmacauth.NewHmacAuth(
 		crypto.SHA1, []byte(key), SignatureHeader, SignatureHeaders)
 	proxy.ServeHTTP(st.rw, req)
